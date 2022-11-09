@@ -22,7 +22,7 @@ in any of the fields.
 
 Is executed as:
 
-```json
+```
 +(first_name:will* last_name:will*)
 +(first_name:smith* last_name:smith*)
 ```

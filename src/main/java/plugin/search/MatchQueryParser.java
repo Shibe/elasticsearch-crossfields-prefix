@@ -3,26 +3,13 @@ package plugin.search;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.CachingTokenFilter;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.miscellaneous.DisableGraphAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.queries.ExtendedCommonTermsQuery;
-import org.apache.lucene.search.BooleanClause;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.BoostAttribute;
-import org.apache.lucene.search.FuzzyQuery;
-import org.apache.lucene.search.MultiTermQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
-import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanOrQuery;
-import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.queries.spans.*;
+import org.apache.lucene.search.*;
 import org.apache.lucene.util.QueryBuilder;
 import org.apache.lucene.util.graph.GraphTokenStreamFiniteStrings;
 import org.elasticsearch.ElasticsearchException;
@@ -39,6 +26,7 @@ import org.elasticsearch.index.mapper.TextSearchInfo;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.query.ZeroTermsQueryOption;
 import org.elasticsearch.index.query.support.QueryParsers;
+import org.elasticsearch.lucene.analysis.miscellaneous.DisableGraphAttribute;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -243,62 +231,22 @@ public class MatchQueryParser {
             }
         }
 
-        Query query;
-        switch (type) {
-            case BOOLEAN:
-                if (commonTermsCutoff == null) {
-                    query = builder.createBooleanQuery(resolvedFieldName, value.toString(), occur);
-                } else {
-                    query = createCommonTermsQuery(builder, resolvedFieldName, value.toString(), occur, occur, commonTermsCutoff);
-                }
-                break;
-            case BOOLEAN_PREFIX:
-                query = builder.createBooleanPrefixQuery(resolvedFieldName, stringValue, occur);
-                break;
-            case PHRASE:
-                query = builder.createPhraseQuery(resolvedFieldName, stringValue, phraseSlop);
-                break;
-            case PHRASE_PREFIX:
-                query = builder.createPhrasePrefixQuery(resolvedFieldName, stringValue, phraseSlop);
-                break;
-            default:
-                throw new IllegalStateException("No type found for [" + type + "]");
-        }
+        Query query = switch (type) {
+            case BOOLEAN -> builder.createBooleanQuery(resolvedFieldName, value.toString(), occur);
+            case BOOLEAN_PREFIX -> builder.createBooleanPrefixQuery(resolvedFieldName, stringValue, occur);
+            case PHRASE -> builder.createPhraseQuery(resolvedFieldName, stringValue, phraseSlop);
+            case PHRASE_PREFIX -> builder.createPhrasePrefixQuery(resolvedFieldName, stringValue, phraseSlop);
+            default -> throw new IllegalStateException("No type found for [" + type + "]");
+        };
+
         return query == null ? zeroTermsQuery.asQuery() : query;
-    }
-
-    private Query createCommonTermsQuery(
-            MatchQueryBuilder builder,
-            String field,
-            String queryText,
-            Occur highFreqOccur,
-            Occur lowFreqOccur,
-            float maxTermFrequency
-    ) {
-        Query booleanQuery = builder.createBooleanQuery(field, queryText, lowFreqOccur);
-        if (booleanQuery != null && booleanQuery instanceof BooleanQuery) {
-            BooleanQuery bq = (BooleanQuery) booleanQuery;
-            return boolToExtendedCommonTermsQuery(bq, highFreqOccur, lowFreqOccur, maxTermFrequency);
-        }
-        return booleanQuery;
-    }
-
-    private Query boolToExtendedCommonTermsQuery(BooleanQuery bq, Occur highFreqOccur, Occur lowFreqOccur, float maxTermFrequency) {
-        ExtendedCommonTermsQuery query = new ExtendedCommonTermsQuery(highFreqOccur, lowFreqOccur, maxTermFrequency);
-        for (BooleanClause clause : bq.clauses()) {
-            if ((clause.getQuery() instanceof TermQuery) == false) {
-                return bq;
-            }
-            query.add(((TermQuery) clause.getQuery()).getTerm());
-        }
-        return query;
     }
 
     protected Analyzer getAnalyzer(MappedFieldType fieldType, boolean quoted) {
         TextSearchInfo tsi = fieldType.getTextSearchInfo();
         assert tsi != TextSearchInfo.NONE;
         if (analyzer == null) {
-            return quoted ? tsi.getSearchQuoteAnalyzer() : tsi.getSearchAnalyzer();
+            return quoted ? tsi.searchQuoteAnalyzer() : tsi.searchAnalyzer();
         } else {
             return analyzer;
         }
@@ -343,7 +291,7 @@ public class MatchQueryParser {
         /**
          * Creates a phrase prefix query from the query text.
          *
-         * @param field field name
+         * @param field     field name
          * @param queryText text to be passed to the analyzer
          * @return {@code PrefixQuery}, {@code MultiPhrasePrefixQuery}, based on the analysis of {@code queryText}
          */
@@ -354,7 +302,7 @@ public class MatchQueryParser {
         /**
          * Creates a boolean prefix query from the query text.
          *
-         * @param field field name
+         * @param field     field name
          * @param queryText text to be passed to the analyzer
          * @return {@code PrefixQuery}, {@code BooleanQuery}, based on the analysis of {@code queryText}
          */
@@ -486,11 +434,6 @@ public class MatchQueryParser {
             return new SpanOrQuery(spanQueries);
         }
 
-        @Override
-        protected SpanQuery createSpanQuery(TokenStream in, String field) throws IOException {
-            return createSpanQuery(in, field, false);
-        }
-
         private SpanQuery createSpanQuery(TokenStream in, String field, boolean isPrefix) throws IOException {
             TermToBytesRefAttribute termAtt = in.getAttribute(TermToBytesRefAttribute.class);
             PositionIncrementAttribute posIncAtt = in.getAttribute(PositionIncrementAttribute.class);
@@ -581,11 +524,11 @@ public class MatchQueryParser {
         }
 
         private void add(
-            BooleanQuery.Builder q,
-            String field,
-            List<Term> current,
-            BooleanClause.Occur operator,
-            boolean isPrefix
+                BooleanQuery.Builder q,
+                String field,
+                List<Term> current,
+                BooleanClause.Occur operator,
+                boolean isPrefix
         ) {
             if (current.isEmpty()) {
                 return;

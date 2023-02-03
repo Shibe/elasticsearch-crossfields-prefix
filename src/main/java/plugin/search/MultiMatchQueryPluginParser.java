@@ -3,7 +3,6 @@ package plugin.search;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.queries.BlendedTermQuery;
 import org.apache.lucene.search.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.QueryBuilder;
@@ -11,6 +10,7 @@ import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.query.AbstractQueryBuilder;
 import org.elasticsearch.index.query.SearchExecutionContext;
+import org.elasticsearch.lucene.queries.BlendedTermQuery;
 
 import java.io.IOException;
 import java.util.*;
@@ -204,17 +204,17 @@ public class MultiMatchQueryPluginParser extends MatchQueryParser {
             for (int i = 0; i < terms.length; i++) {
                 values[i] = terms[i].term.bytes();
             }
-            return blendTerms(context, values, commonTermsCutoff, tieBreaker, lenient, blendedFields, false);
+            return blendTerms(context, values, tieBreaker, lenient, blendedFields, false);
         }
 
         @Override
         protected Query newTermQuery(Term term, float boost) {
-            return blendTerm(context, term.bytes(), commonTermsCutoff, tieBreaker, lenient, blendedFields, false);
+            return blendTerm(context, term.bytes(), tieBreaker, lenient, blendedFields, false);
         }
 
         @Override
         protected Query newPrefixQuery(Term term) {
-            return blendTerm(context, term.bytes(), commonTermsCutoff, tieBreaker, lenient, blendedFields, true);
+            return blendTerm(context, term.bytes(), tieBreaker, lenient, blendedFields, true);
         }
 
         @Override
@@ -247,7 +247,6 @@ public class MultiMatchQueryPluginParser extends MatchQueryParser {
     static Query blendTerm(
             SearchExecutionContext context,
             BytesRef value,
-            Float commonTermsCutoff,
             float tieBreaker,
             boolean lenient,
             List<FieldAndBoost> blendedFields,
@@ -256,7 +255,6 @@ public class MultiMatchQueryPluginParser extends MatchQueryParser {
         return blendTerms(
                 context,
                 new BytesRef[] { value },
-                commonTermsCutoff,
                 tieBreaker,
                 lenient,
                 blendedFields,
@@ -267,7 +265,6 @@ public class MultiMatchQueryPluginParser extends MatchQueryParser {
     static Query blendTerms(
             SearchExecutionContext context,
             BytesRef[] values,
-            Float commonTermsCutoff,
             float tieBreaker,
             boolean lenient,
             List<FieldAndBoost> blendedFields,
@@ -314,11 +311,7 @@ public class MultiMatchQueryPluginParser extends MatchQueryParser {
         if (i > 0) {
             terms = Arrays.copyOf(terms, i);
             blendedBoost = Arrays.copyOf(blendedBoost, i);
-            if (commonTermsCutoff != null) {
-                queries.add(BlendedTermQuery.commonTermsBlendedQuery(terms, blendedBoost, commonTermsCutoff));
-            } else {
-                queries.add(BlendedTermQuery.dismaxBlendedQuery(terms, blendedBoost, tieBreaker));
-            }
+            queries.add(BlendedTermQuery.dismaxBlendedQuery(terms, blendedBoost, tieBreaker));
         }
         if (queries.size() == 1) {
             return queries.get(0);

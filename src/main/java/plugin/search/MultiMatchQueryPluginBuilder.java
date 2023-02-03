@@ -20,12 +20,7 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeMap;
+import java.util.*;
 
 public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatchQueryPluginBuilder> {
 
@@ -219,31 +214,17 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
         maxExpansions = in.readVInt();
         minimumShouldMatch = in.readOptionalString();
         fuzzyRewrite = in.readOptionalString();
-        if (in.getVersion().before(Version.V_7_0_0)) {
-            in.readOptionalBoolean(); // unused use_dis_max flag
-        }
         tieBreaker = in.readOptionalFloat();
-        if (in.getVersion().onOrAfter(Version.V_6_1_0)) {
-            lenient = in.readOptionalBoolean();
-        } else {
-            lenient = in.readBoolean();
-        }
-        cutoffFrequency = in.readOptionalFloat();
+        lenient = in.readOptionalBoolean();
         zeroTermsQuery = ZeroTermsQueryOption.readFromStream(in);
-        if (in.getVersion().onOrAfter(Version.V_6_1_0)) {
-            autoGenerateSynonymsPhraseQuery = in.readBoolean();
-            fuzzyTranspositions = in.readBoolean();
-        }
+        autoGenerateSynonymsPhraseQuery = in.readBoolean();
+        fuzzyTranspositions = in.readBoolean();
     }
 
     @Override
     protected void doWriteTo(StreamOutput out) throws IOException {
         out.writeGenericValue(value);
-        out.writeVInt(fieldsBoosts.size());
-        for (Map.Entry<String, Float> fieldsEntry : fieldsBoosts.entrySet()) {
-            out.writeString(fieldsEntry.getKey());
-            out.writeFloat(fieldsEntry.getValue());
-        }
+        out.writeMap(fieldsBoosts, StreamOutput::writeString, StreamOutput::writeFloat);
         type.writeTo(out);
         operator.writeTo(out);
         out.writeOptionalString(analyzer);
@@ -253,21 +234,11 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
         out.writeVInt(maxExpansions);
         out.writeOptionalString(minimumShouldMatch);
         out.writeOptionalString(fuzzyRewrite);
-        if (out.getVersion().before(Version.V_7_0_0)) {
-            out.writeOptionalBoolean(null);
-        }
         out.writeOptionalFloat(tieBreaker);
-        if (out.getVersion().onOrAfter(Version.V_6_1_0)) {
-            out.writeOptionalBoolean(lenient);
-        } else {
-            out.writeBoolean(lenient == null ? MatchQueryParser.DEFAULT_LENIENCY : lenient);
-        }
-        out.writeOptionalFloat(cutoffFrequency);
+        out.writeOptionalBoolean(lenient);
         zeroTermsQuery.writeTo(out);
-        if (out.getVersion().onOrAfter(Version.V_6_1_0)) {
-            out.writeBoolean(autoGenerateSynonymsPhraseQuery);
-            out.writeBoolean(fuzzyTranspositions);
-        }
+        out.writeBoolean(autoGenerateSynonymsPhraseQuery);
+        out.writeBoolean(fuzzyTranspositions);
     }
 
     public Object value() {
@@ -384,10 +355,8 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
     /**
      * Sets the fuzziness used when evaluated to a fuzzy query type. Defaults to "AUTO".
      */
-    public MultiMatchQueryPluginBuilder fuzziness(Object fuzziness) {
-        if (fuzziness != null) {
-            this.fuzziness = Fuzziness.build(fuzziness);
-        }
+    public MultiMatchQueryPluginBuilder fuzziness(Fuzziness fuzziness) {
+        this.fuzziness = Objects.requireNonNull(fuzziness);
         return this;
     }
 
@@ -497,7 +466,7 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
      * frequency term.
      *
      * @deprecated Since max_score optimization landed in 7.0, normal MultiMatchQuery
-     *             will achieve the same result without any configuration.
+     * will achieve the same result without any configuration.
      */
     @Deprecated
     public MultiMatchQueryPluginBuilder cutoffFrequency(float cutoff) {
@@ -511,7 +480,7 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
      * frequency term.
      *
      * @deprecated Since max_score optimization landed in 7.0, normal MultiMatchQuery
-     *             will achieve the same result without any configuration.
+     * will achieve the same result without any configuration.
      */
     @Deprecated
     public MultiMatchQueryPluginBuilder cutoffFrequency(Float cutoff) {
@@ -742,8 +711,6 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
         MultiMatchQueryPluginBuilder builder = new MultiMatchQueryPluginBuilder(value).fields(fieldsBoosts)
                 .type(type)
                 .analyzer(analyzer)
-                .cutoffFrequency(cutoffFrequency)
-                .fuzziness(fuzziness)
                 .fuzzyRewrite(fuzzyRewrite)
                 .maxExpansions(maxExpansions)
                 .minimumShouldMatch(minimumShouldMatch)
@@ -756,6 +723,9 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
                 .boost(boost)
                 .queryName(queryName)
                 .fuzzyTranspositions(fuzzyTranspositions);
+        if (fuzziness != null) {
+            builder.fuzziness(fuzziness);
+        }
         if (lenient != null) {
             builder.lenient(lenient);
         }
@@ -784,6 +754,11 @@ public class MultiMatchQueryPluginBuilder extends AbstractQueryBuilder<MultiMatc
     @Override
     public String getWriteableName() {
         return NAME;
+    }
+
+    @Override
+    public Version getMinimalSupportedVersion() {
+        return null;
     }
 
     @Override

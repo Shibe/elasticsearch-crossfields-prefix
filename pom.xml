@@ -6,11 +6,11 @@
 
     <groupId>dev.thom.elasticsearch</groupId>
     <artifactId>crossfields-prefix</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
     <description>Combines cross_fields and prefix matching into a new type for multi_match.</description>
 
     <properties>
-        <elasticsearch.version>7.17.7</elasticsearch.version>
+        <elasticsearch.version>8.6.1</elasticsearch.version>
         <junit.jupiter.version>5.9.1</junit.jupiter.version>
         <junit.platform.version>1.9.1</junit.platform.version>
     </properties>
